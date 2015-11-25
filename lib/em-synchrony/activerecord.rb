@@ -61,8 +61,8 @@ module EventMachine::Synchrony::ActiveRecord
 end # EventMachine::Synchrony::ActiveRecord
 
 ActiveSupport.on_load(:active_record) do
-  ActiveRecord::Core.send(:include, EventMachine::Synchrony::ActiveRecord::Core)
-  ActiveRecord::AttributeMethods.send(:include, EventMachine::Synchrony::ActiveRecord::AttributeMethods)
+  ActiveRecord::Base.send(:include, EventMachine::Synchrony::ActiveRecord::Core)
+  ActiveRecord::Base.send(:include, EventMachine::Synchrony::ActiveRecord::AttributeMethods)
 
   ActiveRecord::ConnectionAdapters::AbstractAdapter.send(:include, EventMachine::Synchrony::MonitorMixin)
 
