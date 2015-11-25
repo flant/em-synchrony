@@ -34,7 +34,7 @@ module EventMachine::Synchrony::ActiveRecord
       class << self
         alias_method_chain :define_attribute_methods, :fiber_mutex
       end # << self
-    end
+    end # included
 
     module ClassMethods
       def attribute_methods_fiber_mutex
