@@ -1,33 +1,72 @@
 require 'em-synchrony'
 
-ActiveSupport.on_load(:active_record) do
-  class ActiveRecord::Base
-    class << self
-      def define_attribute_methods_with_fiber_mutex
-        @attribute_methods_fiber_mutex ||= EventMachine::Synchrony::Thread::Mutex.new
+module EventMachine::Synchrony::ActiveRecord
+  module Core
+    extend ActiveSupport::Concern
 
-        @attribute_methods_fiber_mutex.synchronize do
+    class StatementCache < Hash
+      include Mutex_m
+
+      def fiber_mutex
+        @fiber_mutex ||= ::EventMachine::Synchrony::Thread::Mutex.new
+      end
+
+      def synchronize_with_fiber_mutex(*a, &blk)
+        fiber_mutex.synchronize do
+          synchronize_without_fiber_mutex(*a, &blk)
+        end # synchronize
+      end
+
+      alias_method_chain :synchronize, :fiber_mutex
+    end # StatementCache
+
+    module ClassMethods
+      def initialize_find_by_cache
+        self.find_by_statement_cache = ::EventMachine::Synchrony::ActiveRecord::Core::StatementCache.new
+      end
+    end # ClassMethods
+  end # Core
+
+  module AttributeMethods
+    extend ActiveSupport::Concern
+
+    included do
+      alias_method_chain :define_attribute_methods, :fiber_mutex
+    end
+
+    module ClassMethods
+      def attribute_methods_fiber_mutex
+        @attribute_methods_fiber_mutex ||= ::EventMachine::Synchrony::Thread::Mutex.new
+      end
+
+      def define_attribute_methods_with_fiber_mutex
+        attribute_methods_fiber_mutex.synchronize do
           define_attribute_methods_without_fiber_mutex
         end
       end
+    end # ClassMethods
+  end # AttributeMethods
 
-      alias_method_chain :define_attribute_methods, :fiber_mutex
-    end
-  end
+  module ConnectionAdapters
+    module ConnectionPool
+      def current_connection_id #:nodoc:
+        ::ActiveRecord::Base.connection_id ||= Fiber.current.object_id
+      end
 
-  class ActiveRecord::ConnectionAdapters::ConnectionPool
-    include EventMachine::Synchrony::MonitorMixin
+      def clear_stale_cached_connections!
+        []
+      end
+    end # ConnectionPool
+  end # ConnectionAdapters
+end # EventMachine::Synchrony::ActiveRecord
 
-    def current_connection_id #:nodoc:
-      ActiveRecord::Base.connection_id ||= Fiber.current.object_id
-    end
+ActiveSupport.on_load(:active_record) do
+  ActiveRecord::Core.send(:include, EventMachine::Synchrony::ActiveRecord::Core)
+  ActiveRecord::AttributeMethods.send(:include, EventMachine::Synchrony::ActiveRecord::AttributeMethods)
 
-    def clear_stale_cached_connections!
-      []
-    end
-  end
+  ActiveRecord::ConnectionAdapters::AbstractAdapter.send(:include, EventMachine::Synchrony::MonitorMixin)
 
-  class ActiveRecord::ConnectionAdapters::AbstractAdapter
-    include EventMachine::Synchrony::MonitorMixin
-  end
+  ActiveRecord::ConnectionAdapters::ConnectionPool.send(:include, EventMachine::Synchrony::MonitorMixin)
+  ActiveRecord::ConnectionAdapters::ConnectionPool.send(:include,
+      EventMachine::Synchrony::ActiveRecord::ConnectionAdapters::ConnectionPool)
 end
