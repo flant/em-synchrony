@@ -31,7 +31,9 @@ module EventMachine::Synchrony::ActiveRecord
     extend ActiveSupport::Concern
 
     included do
-      alias_method_chain :define_attribute_methods, :fiber_mutex
+      class << self
+        alias_method_chain :define_attribute_methods, :fiber_mutex
+      end # << self
     end
 
     module ClassMethods
